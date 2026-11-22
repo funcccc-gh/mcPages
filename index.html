@@ -161,7 +161,7 @@ textarea{min-height:104px;resize:vertical;line-height:1.6}
 .field.bad input,.field.bad select,.field.bad textarea{border-color:#e5534b}
 .field.bad .err{display:block}
 
-/* UUID 自动查询状态行 */
+/* UUID 自动查询状态行（独立命名空间，避免与结果图标样式冲突） */
 .lookup-line{display:flex;align-items:center;gap:8px;margin-top:6px;min-height:18px;flex-wrap:wrap}
 .lookup-msg{font-size:12px;line-height:1.5;display:none;align-items:center;gap:7px;font-weight:400}
 .lookup-msg.show{display:inline-flex}
@@ -190,6 +190,10 @@ textarea{min-height:104px;resize:vertical;line-height:1.6}
   font-family:ui-monospace,monospace;font-size:12.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto}
 .preview.show{display:block}
 .done-btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+
+/* 白名单额外操作按钮 */
+.wl-extra{margin-top:20px;padding-top:20px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.wl-extra a.btn{font-size:13.5px}
 
 /* 关于 / 页脚 */
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
@@ -331,6 +335,10 @@ footer{border-top:1px solid var(--line);padding:40px 0;color:var(--muted);font-s
             <button class="btn sm" id="doneAgain"></button>
           </div>
         </div>
+        <!-- 新增：可配置跳转按钮区域 -->
+        <div class="wl-extra" id="wlExtraBtnWrap">
+          <a class="btn sm" id="wlExtraBtn" href="#"></a>
+        </div>
       </div>
     </div>
   </div>
@@ -366,9 +374,17 @@ const SITE = {
   name: "Crafter",
   ip: "mc.rua.by",
   version: "26.2",
-  hero: "assert/image/title.png",   // 首页背景图，没有就填 ""
+  hero: "",   // 首页背景图，没有就填 ""
   status: true,                  // 是否联网查询在线人数
-  premium: false                  // 正版验证服？false = 离线服（影响 UUID 提示）
+  premium: false,                 // 正版验证服？false = 离线服（影响 UUID 提示）
+
+  /* ★ 新增：白名单区域后方跳转按钮配置（修改这里即可） */
+  whitelistExtraButton: {
+    enable: true,                // 是否显示此按钮
+    text: "提交到GitHub仓库-->", // 按钮文案
+    href: "https://github.com/funcccc-gh/mcPages/issues/1#issue-6540873263", // 跳转链接（支持绝对路径或 #锚点）
+    target: "_blank"             // _blank 新标签页 / _self 当前页
+  }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -460,7 +476,7 @@ const TEXT = {
     success:{ title:"申请内容已复制", desc:"请把剪贴板中的内容发送给服务器管理组。若复制失败，可手动选中下方文本复制。" },
     error:{ title:"复制失败", desc:"浏览器阻止了剪贴板访问。请手动选中下方文本复制后发送给管理组。" },
     doneCopyBtn:"复制", doneAgainBtn:"再填一份",
-    previewTitle:"【白名单申请】{id}"
+    previewTitle:"# 【白名单申请】{id}"
   },
 
   about:{
@@ -508,10 +524,10 @@ const FORM = {
       pattern:"^[A-Za-z0-9_]{3,16}$", patternMsg:"3-16 位字母、数字或下划线" },
       // 离线服允许中文名就把 pattern 改成："^.{2,20}$"
 
-    { key:"uuid", label:"UUID", type:"text", half:true, required:true, mono:true, lookup:true,
+    { key:"uuid", label:"UUID", type:"text", half:true, required:false, mono:true, lookup:true,
       placeholder:"留空也可以", hint:"若你使用离线账号，注意填入实际UUID，否则可能无法进服！" },
 
-    { key:"reason", label:"加入理由", type:"textarea", required:false, maxlength:1000,
+    { key:"reason", label:"加入理由", type:"textarea", required:false, maxlength:500,
       placeholder:"想加入我们的原因、打算在服务器里做什么、想玩什么…（选填）" }
   ]
 };
@@ -710,7 +726,7 @@ $("#formFields").innerHTML = FORM.fields.map(f=>{
   const req = f.required ? '<span class="req">*</span>' : `<span class="opt-tag">${esc(W.optionalTag)}</span>`;
   const counter=f.maxlength?`<span class="counter" id="c_${f.key}">0 / ${f.maxlength}</span>`:"";
   const label=`<label for="${id}">${t(f.label)} ${req}${counter}</label>`;
-  const cls=f.mono?' class="mono"':"";
+  const cls=f.mono?' class="mono"':'';
   let input;
   if(f.type==="textarea"){
     input=`<textarea id="${id}" name="${f.key}" placeholder="${esc(t(f.placeholder||""))}"${f.maxlength?` maxlength="${f.maxlength}"`:""}></textarea>`;
@@ -917,6 +933,33 @@ wlForm.addEventListener("submit", async e=>{
   if(ok){ try{localStorage.removeItem(DRAFT);}catch(e){} }
   showDone(ok,text);
 });
+
+/* ★ 新增：白名单区域后方跳转按钮渲染 */
+(function renderWhitelistExtraButton(){
+  const cfg = SITE.whitelistExtraButton;
+  if(!cfg || !cfg.enable) {
+    const wrap = $("#wlExtraBtnWrap");
+    if(wrap) wrap.style.display = "none";
+    return;
+  }
+  const wrap = $("#wlExtraBtnWrap");
+  const btn = $("#wlExtraBtn");
+  if(!wrap || !btn) return;
+  btn.textContent = cfg.text;
+  btn.href = cfg.href;
+  if(cfg.target) btn.target = cfg.target;
+  if(cfg.target === "_blank") btn.rel = "noopener noreferrer";
+  // 如果 href 以 # 开头，添加平滑滚动
+  if(cfg.href.startsWith("#")) {
+    btn.addEventListener("click", (e) => {
+      const target = document.querySelector(cfg.href);
+      if(target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  }
+})();
 
 /* --- 关于 / 页脚 --- */
 set("#aLabel",TEXT.about.label); set("#aTitle",TEXT.about.title); set("#aDesc",TEXT.about.desc);
